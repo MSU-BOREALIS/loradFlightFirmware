@@ -22,7 +22,6 @@
 #define PAYLOAD_LEN 0x7D
 #define I2C_DELAY 5
 #define SPI_DELAY 20
-#define GPS_MESSAGE_SIZE 100
 
 //----PAYLOAD STRUCT TO SEND DATA TO LORA-----
 struct payload{
@@ -32,7 +31,6 @@ struct payload{
     int LORA_accel_x;
     int LORA_accel_y;
     int LORA_accel_z;
-    //char LORA_GPS[GPS_MESSAGE_SIZE]; //uncomment if using this in the debounce loop
 };
 
 //--------------Globals--------------------
@@ -51,25 +49,26 @@ long long OFF, SENS = 0; //used for pressure calculation
 // for SD
 unsigned long address_cnt  = 0; // CNT for address of microSD
 unsigned long address_last = 0; // For error flag
-// for NEMO
-unsigned char NEMO_data[360];
-unsigned int seconds = 0;
 
 int SCL = BIT7;
 int SDA = BIT6;
 
 //-----GPS Globals-----
 // The below character arrays are the strings needing to be sent to the GPS to properly configure the messages
-char diable_GLL[] = {'$','P','U','B','X',',','4','0',',','G','L','L',',','0',',','0',',','0',',','0',',','0',',','0','*','5','C','\r','\n'};
-char diable_GSV[] = {'$','P','U','B','X',',','4','0',',','G','S','V',',','0',',','0',',','0',',','0',',','0',',','0','*','5','9','\r','\n'};
-char diable_GSA[] = {'$','P','U','B','X',',','4','0',',','G','S','A',',','0',',','0',',','0',',','0',',','0',',','0','*','4','E','\r','\n'};
-char diable_VTG[] = {'$','P','U','B','X',',','4','0',',','V','T','G',',','0',',','0',',','0',',','0',',','0',',','0','*','5','E','\r','\n'};
-char diable_RMC[] = {'$','P','U','B','X',',','4','0',',','R','M','C',',','0',',','0',',','0',',','0',',','0',',','0','*','4','7','\r','\n'};
-//char diable_GGA[] = {'$','P','U','B','X',',','4','0',',','G','G','A',',','0',',','0',',','0',',','0',',','0',',','0','*','5','A','\r','\n'};
-//char poll_airborne[] = {0xB5, 0x62, 0x06, 0x24, 0x00, 0x2A, 0x5A};
-//char poll_airborne[] = {0xB5, 0x62, 0x06, 0x24, 0x00, 0x00, 0x2A, 0x84};
-char set_airborne_2g[] = {0xB5, 0x62, 0x06, 0x24, 0x24, 0x00, 0xFF, 0xFF, 0x07, 0x03, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x05, 0x00, 0xFA, 0x00, 0xFA, 0x00, 0x64, 0x00, 0x2C, 0x01, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4E, 0xFD};
-char GPS_GNGGA[GPS_MESSAGE_SIZE]; //this holds the char array we want
+char rmcOff[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X04, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X03, 0X3F};
+char vtgOff[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X05, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X04, 0X46};
+char gsaOff[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X02, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X01, 0X31};
+char gsvOff[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X03, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X02, 0X38};
+char gllOff[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X01, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X2A};
+char ggaOff[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0X23};
+//char ggaOn[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X00, 0X00, 0X01, 0X01, 0X00, 0X00, 0X00, 0X01, 0X2C};       //gga on test
+char zdaOff[] = {0XB5, 0X62, 0X06, 0X01, 0X08, 0X00, 0XF0, 0X08, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X07, 0X5B};
+char polReq[] = {0xB5, 0x62, 0x06, 0x01, 0x08, 0x00, 0x01, 0x07, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x19, 0xE5};
+// GPS VARS
+char gpsReceiveMessage[100];
+unsigned int gpsCnt = 0;
+int gpsDone = 0;
+char gpsSunnySide[100];
 
 //----LORA STRUCT----
 struct payload LORA_PAYLOAD; //THIS IS THE LORA PAYLOAD ALL MEMBERS ARE DAYA TO BE SENT TO THE LORA, GLOBAL FOR INTERRUPT ACCESS
@@ -339,81 +338,56 @@ void convert_pressure(){
     for(i=0; i < 10; i++){}
 }
 
-void i2c_get_nemo_data(){
-    unsigned int n;
-    i2c_send_address_proc(NEMO_ADDR, WRITE_MODE);
-    i2c_send_byte_proc(0x00);
-    i2c_send_address_proc(NEMO_ADDR, READ_MODE);
-    for(n = 0; n < 35; n++){
-        NEMO_data[n] = i2c_receive_byte_proc();
-        i2c_send_ack_proc();
-    }
-    NEMO_data[35] = i2c_receive_byte_proc();
-    i2c_send_nack_proc();
-    i2c_stop_proc();
-}
-
-void i2c_get_nemo_histograms(){
-    unsigned int n;
-    i2c_send_address_proc(NEMO_ADDR, WRITE_MODE);      // Receive BIN histograms
-    i2c_send_byte_proc(0x40);
-    i2c_send_address_proc(NEMO_ADDR, READ_MODE);
-    for(n = 0; n < 191; n++){
-        NEMO_data[n + 36] = i2c_receive_byte_proc();
-        i2c_send_ack_proc();
-    }
-    NEMO_data[227] = i2c_receive_byte_proc();
-    i2c_send_nack_proc();
-    i2c_stop_proc();
-    __delay_cycles(5000);
-    i2c_send_address_proc(NEMO_ADDR, WRITE_MODE);      // Reset BIN values
-    i2c_send_byte_proc(0x20);
-    i2c_send_byte_proc(0x07);
-    i2c_stop_proc();
-    __delay_cycles(5000);
-}
-
-void i2c_get_nemo_FIFO(){
-    unsigned long n, k, m;
-    i2c_send_address_proc(NEMO_ADDR, WRITE_MODE);      // Receive FIFO info
-    i2c_send_byte_proc(0x30);
-    i2c_send_address_proc(NEMO_ADDR, READ_MODE);
-    k = i2c_receive_byte_proc();
-    i2c_send_ack_proc();
-    m = i2c_receive_byte_proc();
-    i2c_send_nack_proc();
-    i2c_stop_proc();
-    NEMO_data[228] = k;
-    NEMO_data[229] = m;
-    m = (m << 8) + k;
-    __delay_cycles(5000);
-    if(m!=0){                                   // Fixed 8/5/2021
-        i2c_send_address_proc(NEMO_ADDR, WRITE_MODE);
-        i2c_send_byte_proc(0x32);
-        i2c_send_address_proc(NEMO_ADDR, READ_MODE);
-        for(n = 0; n < (m-1); n++){
-            NEMO_data[n + 230] = i2c_receive_byte_proc();
-            i2c_send_ack_proc();
-       }
-       NEMO_data[m + 230] = i2c_receive_byte_proc();
-       i2c_send_nack_proc();
-       i2c_stop_proc();
-    }
-    for(n = 0; n < 355 - (m + 230); n++){
-        NEMO_data[n + m + 231] = 0x00;
-    }
-    __delay_cycles(5000);
-}
 
 //-----UART-----
 
-//Send UART config messages (takes a configuration message in the form of a character array"
-void UART_config_GPS_msgs(char disable[29]){
-    for(i=0; i<29; i++){
-        UCA0TXBUF = disable[i];
-        //P5OUT ^= BIT0; //toggle LED // Taken Out
-        for(j=0; j<150;j++){}
+// Send a byte to the GPS
+void sendByteGPS(char byte)
+{
+    int j;
+    UCA0TXBUF = (byte);
+    for(j=0; j<100;j++){}
+}
+
+// Send a message to the GPS
+void sendGPSMessOff(char* message, int length)
+{
+    int i;
+    for(i=0; i<length; i++){
+        char temp = message[i];
+        sendByteGPS(temp);
     }
+}
+
+// Descramble the GPS data to make it always the same
+void descrambleGPSData(void)
+{
+    int i;
+    int firstBestIndex = 0;
+    for(i=0; i<sizeof(gpsSunnySide); i++)
+    {
+        if(gpsReceiveMessage[i] == 0xB5)
+        {
+            if(gpsReceiveMessage[i+1] == 0x62)
+            {
+                if(gpsReceiveMessage[i+2] == 0x01)
+                {
+                    if(gpsReceiveMessage[i+3] == 0x07)
+                    {
+                        if(gpsReceiveMessage[i+4] == 0x5C)
+                        {
+                            firstBestIndex = i;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for(i=0; i<sizeof(gpsSunnySide); i++)
+    {
+        gpsSunnySide[i] = gpsReceiveMessage[(i+firstBestIndex)%sizeof(gpsReceiveMessage)];
+    }
+    return;
 }
 
 /**
@@ -555,105 +529,93 @@ int main(void)
     LORA_PAYLOAD.LORA_int_temp = 0;
     LORA_PAYLOAD.LORA_pressure = 0;
 
-    for(i=0; i<sizeof(NEMO_data); i++){     // Added 8/5/2021
-        NEMO_data[i] = 0;
-    }
-
     //--------Send UART config messages--------
-    for(k=0; k < 8; k++){
-        UART_config_GPS_msgs(diable_GLL);
-        UART_config_GPS_msgs(diable_GSV);
-        UART_config_GPS_msgs(diable_GSA);
-        UART_config_GPS_msgs(diable_VTG);
-        UART_config_GPS_msgs(diable_RMC);
-        //UART_config_GPS_msgs(diable_GGA);
-        for(m=0; m<44; m++){
-            UCA0TXBUF = set_airborne_2g[m];  //set to mode 7 airborne < 2g
-            //P5OUT ^= BIT0; //toggle LED // taken out
-            for(j=0; j<150; j++){}
-        }
-    }
-    k = 0; //set k=0 to ensure manual incrementing of k for UART is setup correctly
-    //fixes a bug where the array skips the first character, always a $
-    GPS_GNGGA[0] = '$';
-    //LORA_PAYLOAD.LORA_GPS[0] = '$'; //this line isn't necessary if using real data as it gets copied from "GPS_GNGGA"
-    //DEBUG ONLY, COMMENT THIS FOR LOOP WHEN READY TO GET REAL UART DATA
-    //for(i=1; i<95; i++){
-        //LORA_PAYLOAD.LORA_GPS[i] = '!';
-    //}
-    //LORA_PAYLOAD.LORA_GPS[95] = '\n';
+	int j;
+    for(j=0; j<5000; j++){}
+	
+	sendGPSMessOff(rmcOff, sizeof(rmcOff));
+    for(j=0; j<2000; j++){}
+    sendGPSMessOff(vtgOff, sizeof(vtgOff));
+    for(j=0; j<2000; j++){}
+    sendGPSMessOff(gsaOff, sizeof(gsaOff));
+    for(j=0; j<2000; j++){}
+    sendGPSMessOff(gsvOff, sizeof(gsvOff));
+    for(j=0; j<2000; j++){}
+    sendGPSMessOff(gllOff, sizeof(gllOff));
+    for(j=0; j<2000; j++){}
+    sendGPSMessOff(ggaOff, sizeof(ggaOff));
+    for(j=0; j<2000; j++){}
+    sendGPSMessOff(zdaOff, sizeof(zdaOff));
+    for(j=0; j<2000; j++){}
+    sendGPSMessOff(polReq, sizeof(polReq));
+    for(j=0; j<2000; j++){}
 
     UCA0IE &= ~UCRXIE; //disable UART receive interrupt (do this here so we don't receive data too early)
     __enable_interrupt();
 
-    i2c_get_nemo_data();
-    i2c_get_nemo_histograms();
 
     delay(10000);
 
     while(1){
 
-        //Uncomment to check that the airborne mode was set correctly
-        /*for(m=0; m<8; m++){
-            UCA0TXBUF = poll_airborne[m];
-            for(j=0; j<150; j++){}
-        }
-        delay(5000);*/
+		//Uncomment to check that the airborne mode was set correctly
+		/*for(m=0; m<8; m++){
+			UCA0TXBUF = poll_airborne[m];
+			for(j=0; j<150; j++){}
+		}
+		delay(5000);*/
 
-        //get temperatures
-       int_temp = read_temp(INT_TEMP_ADDR, TEMP_MSB);
-       int_temp = int_temp << 8;
-       int_temp = int_temp + read_temp(INT_TEMP_ADDR, TEMP_LSB);
-       LORA_PAYLOAD.LORA_int_temp = int_temp;
-       ext_temp = read_temp(EXT_TEMP_ADDR, TEMP_MSB);
-       ext_temp = ext_temp << 8;
-       ext_temp = ext_temp + read_temp(EXT_TEMP_ADDR, TEMP_LSB);
-       LORA_PAYLOAD.LORA_ext_temp = ext_temp;
-       for(i=0; i<10; i++){}
+		//get temperatures
+		int_temp = read_temp(INT_TEMP_ADDR, TEMP_MSB);
+		int_temp = int_temp << 8;
+		int_temp = int_temp + read_temp(INT_TEMP_ADDR, TEMP_LSB);
+		LORA_PAYLOAD.LORA_int_temp = int_temp;
+		ext_temp = read_temp(EXT_TEMP_ADDR, TEMP_MSB);
+		ext_temp = ext_temp << 8;
+		ext_temp = ext_temp + read_temp(EXT_TEMP_ADDR, TEMP_LSB);
+		LORA_PAYLOAD.LORA_ext_temp = ext_temp;
+		for(i=0; i<10; i++){}
 
-       //get accelerometer
-       accel_x = read_accel(ACCEL_X_MSB);
-       accel_x = accel_x << 8;
-       accel_x = accel_x + read_accel(ACCEL_X_LSB);
-       LORA_PAYLOAD.LORA_accel_x = accel_x;
-       accel_y = read_accel(ACCEL_Y_MSB);
-       accel_y = accel_y << 8;
-       accel_y = accel_y + read_accel(ACCEL_Y_LSB);
-       LORA_PAYLOAD.LORA_accel_y = accel_y;
-       accel_z = read_accel(ACCEL_Z_MSB);
-       accel_z = accel_z << 8;
-       accel_z = accel_z + read_accel(ACCEL_Z_LSB);
-       LORA_PAYLOAD.LORA_accel_z = accel_z;
-       for(i=0; i < 10; i++){}
+		//get accelerometer
+		accel_x = read_accel(ACCEL_X_MSB);
+		accel_x = accel_x << 8;
+		accel_x = accel_x + read_accel(ACCEL_X_LSB);
+		LORA_PAYLOAD.LORA_accel_x = accel_x;
+		accel_y = read_accel(ACCEL_Y_MSB);
+		accel_y = accel_y << 8;
+		accel_y = accel_y + read_accel(ACCEL_Y_LSB);
+		LORA_PAYLOAD.LORA_accel_y = accel_y;
+		accel_z = read_accel(ACCEL_Z_MSB);
+		accel_z = accel_z << 8;
+		accel_z = accel_z + read_accel(ACCEL_Z_LSB);
+		LORA_PAYLOAD.LORA_accel_z = accel_z;
+		for(i=0; i < 10; i++){}
 
-       //get pressure
-       i2c_tx_pressure(GET_PRESSURE);
-       for(i=0; i<900; i++){} //9ms delay
-       i2c_tx_pressure(READ_PRESS);
-       digital_press = i2c_rx_pressure();
+		//get pressure
+		i2c_tx_pressure(GET_PRESSURE);
+		for(i=0; i<900; i++){} //9ms delay
+		i2c_tx_pressure(READ_PRESS);
+		digital_press = i2c_rx_pressure();
 
-       i2c_tx_pressure(GET_PRESS_TEMP);
-       for(i=0; i<900; i++){} //9ms delay
-       i2c_tx_pressure(READ_PRESS);
-       digital_press_temp = i2c_rx_pressure();
+		i2c_tx_pressure(GET_PRESS_TEMP);
+		for(i=0; i<900; i++){} //9ms delay
+		i2c_tx_pressure(READ_PRESS);
+		digital_press_temp = i2c_rx_pressure();
 
-       convert_pressure();
-       LORA_PAYLOAD.LORA_pressure = pressure;
+		convert_pressure();
+		LORA_PAYLOAD.LORA_pressure = pressure;
 
-       //set GPS data to struct value, if we need to debounce a value, this is how we would do it.
-          /*for(k = 0; k < 100; k++){
-              LORA_PAYLOAD.LORA_GPS[k] = temp[k]; //we set this rather than sending the GPS_GNGGA variable directly so we have a slight "debounce" from recieving it
-              //UCA0TXBUF = LORA_PAYLOAD.LORA_GPS[k]; //uncomment this line to debug what is saving to the struct variable from the UART line
-              if(temp[k] == '\n'){
-                  k = 0;
-              }
-              //for(i=0; i<150;i++){} //this line was a delay for UART transmission
-          }*/
+      
 
-       UCA0IE |= UCRXIE; //enable UART receive interrupt
-       delay(10000);
+		gpsCnt = 0;
+		gpsDone = 0;                                                                                                                        // Reset GPS Flag
+		UCA0IE |= UCRXIE;                                                                                                                   // Enable GPS
+		while(gpsDone != 1){}                                                                                                               // Wait for GPS to finish
+		UCA0IE &= ~UCRXIE;                                                                                                                  // disable UART message receiving
+		descrambleGPSData();
+		delay(10000);
 
-       //Send the character array of all the data to LoRa! Yay! Sending MSB first
+		//Send the character array of all the data to LoRa! Yay! Sending MSB first
         SPI_tx(FIFO_ADDR_PTR_0D, 0x00); //set FIFO pointer to 0x00
 
         //Write the radiohead header
@@ -695,9 +657,9 @@ int main(void)
         delay(SPI_DELAY);
         SPI_tx_two_bytes(packet_tx_cnt);
         //transmit GPS data
-        for(i=0; i <GPS_MESSAGE_SIZE; i++){
-          UCA1TXBUF = GPS_GNGGA[i];
-          delay(SPI_DELAY);
+        for(i=0; i <sizeof(gpsSunnySide); i++){
+			UCA1TXBUF = gpsSunnySide[i];
+			delay(SPI_DELAY);
         }
         P4OUT |= NSS; //SPI chip select
 
@@ -707,17 +669,6 @@ int main(void)
 
         packet_tx_cnt++;
 
-        // for SD card
-
-        if ((packet_tx_cnt%60) == 0){
-          i2c_get_nemo_data();
-          i2c_get_nemo_histograms();
-        }
-        i2c_get_nemo_FIFO();
-
-        for(i=0;i<20;i++){
-            delay(10000);
-        }
 
         //Send the character array of all the data to LoRa! Yay! Sending MSB first
         SPI_tx(FIFO_ADDR_PTR_0D, 0x00); //set FIFO pointer to 0x00
@@ -737,11 +688,6 @@ int main(void)
         UCA1TXBUF = 0x7B;           // Start of transmission character
         delay(SPI_DELAY);
 
-        //transmit NEMO data
-        for(i=0; i < 228; i++){
-            UCA1TXBUF = NEMO_data[i];
-            delay(SPI_DELAY);
-        }
         UCA1TXBUF = 0x7C;
         delay(SPI_DELAY);
         P4OUT |= NSS; //SPI chip select
@@ -749,10 +695,6 @@ int main(void)
         SPI_tx(FIFO_ADDR_PTR_0D, 0x00); //Set Pointer to FIFO LoRa back to 0x00
 
         SPI_tx(OPMODE_01, MODE_LORA_TX); //Set to Transmit LoRa
-
-        for(i=0;i<20;i++){
-            delay(10000);
-        }
 
         //Send the character array of all the data to LoRa! Yay! Sending MSB first
         SPI_tx(FIFO_ADDR_PTR_0D, 0x00); //set FIFO pointer to 0x00
@@ -772,11 +714,6 @@ int main(void)
         UCA1TXBUF = 0x28;           // Start of transmission character
         delay(SPI_DELAY);
 
-        //transmit NEMO data
-        for(i=228; i < sizeof(NEMO_data); i++){
-            UCA1TXBUF = NEMO_data[i];
-            delay(SPI_DELAY);
-        }
         UCA1TXBUF = 0x29;
         delay(SPI_DELAY);
         P4OUT |= NSS; //SPI chip select
@@ -786,12 +723,12 @@ int main(void)
         SPI_tx(OPMODE_01, MODE_LORA_TX); //Set to Transmit LoRa
 
         if(address_error != 0){
-          address_cnt = address_last;
-          address_error = 0;
+			address_cnt = address_last;
+			address_error = 0;
         }
         address_last = address_cnt;
         for(d = 0; d < sizeof(sd_buffer); d++){
-          sd_buffer[d] = 0;
+			sd_buffer[d] = 0;
         }
         sd_buffer[0] = LORA_PAYLOAD.LORA_pressure & 0xFF;
         sd_buffer[1] = (LORA_PAYLOAD.LORA_pressure & 0xFF00) >> 8;
@@ -807,12 +744,8 @@ int main(void)
         sd_buffer[11] = (LORA_PAYLOAD.LORA_accel_y & 0xFF00) >> 8;
         sd_buffer[12] = LORA_PAYLOAD.LORA_accel_z & 0xFF;
         sd_buffer[13] = (LORA_PAYLOAD.LORA_accel_z & 0xFF00) >> 8;
-        for(d = GPS_MESSAGE_SIZE; d > 0; d--){
-          sd_buffer[d + 14] = GPS_GNGGA[d];
-        }
-        int g;
-        for(g = 0; g < sizeof(NEMO_data); g++){
-          sd_buffer[114 + g] = NEMO_data[g];
+        for(d = sizeof(gpsSunnySide); d > 0; d--){
+			sd_buffer[d + 14] = gpsSunnySide[d];
         }
         sendData(address_cnt, sd_buffer);
         address_cnt++;
@@ -823,7 +756,7 @@ int main(void)
 
         //long delay because we don't need to send that often and we wanna get the GPS data
         for(i=0;i<20;i++){
-        delay(10000);
+			delay(10000);
         }
 
     }
@@ -832,13 +765,16 @@ int main(void)
 
 //UART receive interrupt
 #pragma vector=EUSCI_A0_VECTOR
-__interrupt void EUSCI_A0_RX_ISR(void){
-    GPS_GNGGA[h] = UCA0RXBUF;
-    //P5OUT ^= BIT0; //toggle LED // taken out
-    if(h==(GPS_MESSAGE_SIZE-1)){
-        h=0;
-        UCA0IE &= ~UCRXIE; //disable UART receive interrupt
-    }else{
-        h++;
+__interrupt void EUSCI_A0_RX_ISR(void)
+{
+    gpsReceiveMessage[gpsCnt] = UCA0RXBUF;
+    if(gpsCnt == sizeof(gpsReceiveMessage)-1)
+    {
+        gpsCnt = 0;
+        gpsDone = 1;
+    }
+    else
+    {
+        gpsCnt++;
     }
 }
